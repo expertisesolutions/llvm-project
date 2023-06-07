@@ -15,6 +15,7 @@
 #define LLVM_LIB_TARGET_RISCV_RISCV_H
 
 #include "MCTargetDesc/RISCVBaseInfo.h"
+#include "llvm/CodeGen/Passes.h"
 #include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
@@ -69,6 +70,9 @@ void initializeRISCVPreRAExpandPseudoPass(PassRegistry &);
 
 FunctionPass *createRISCVExpandAtomicPseudoPass();
 void initializeRISCVExpandAtomicPseudoPass(PassRegistry &);
+
+Pass *createRISCVLoopIdiomPass();
+void initializeRISCVLoopIdiomRecognizeLegacyPassPass(PassRegistry &);
 
 FunctionPass *createRISCVInsertVSETVLIPass();
 void initializeRISCVInsertVSETVLIPass(PassRegistry &);

@@ -13,6 +13,7 @@
 #include "RISCVTargetMachine.h"
 #include "MCTargetDesc/RISCVBaseInfo.h"
 #include "RISCV.h"
+#include "RISCVLoopIdiomRecognition.h"
 #include "RISCVMachineFunctionInfo.h"
 #include "RISCVTargetObjectFile.h"
 #include "RISCVTargetTransformInfo.h"
@@ -653,6 +654,7 @@ void RISCVTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
   PB.registerLateLoopOptimizationsEPCallback([=](LoopPassManager &LPM,
                                                  OptimizationLevel Level) {
     LPM.addPass(LoopIdiomVectorizePass(LoopIdiomVectorizeStyle::Predicated));
+    LPM.addPass(RISCVLoopIdiomRecognitionPass());
   });
 }
 

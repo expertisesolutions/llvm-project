@@ -84,6 +84,17 @@ let TargetPrefix = "riscv" in {
   // Zbc
   def int_riscv_clmulr : RISCVBitManipGPRGPRIntrinsics;
 
+  // Perform number of steps of polynomial division.
+  // First argument is the divident, second argument is the divisor,
+  // third argument is the number of steps.
+  // Both dividend and divisor are written so that lower - order bits correspond
+  // to the coefficients of higer order terms of the polynomial.
+  def int_riscv_pdivstepsr : Intrinsic<
+    [llvm_any_ty],
+    [LLVMMatchType<0>, LLVMMatchType<0>, LLVMMatchType<0>],
+    [IntrNoMem, IntrSpeculatable, IntrWillReturn]
+  >;
+
   // Zbkb
   def int_riscv_brev8 : RISCVBitManipGPRIntrinsics;
   def int_riscv_zip   : RISCVBitManipGPRIntrinsics;
@@ -635,7 +646,7 @@ let TargetPrefix = "riscv" in {
   class RISCVClassifyMasked
         : DefaultAttrsIntrinsic<[LLVMVectorOfBitcastsToInt<0>],
                     [LLVMVectorOfBitcastsToInt<0>, llvm_anyvector_ty,
-                     LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>, 
+                     LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>,
                      llvm_anyint_ty, LLVMMatchType<1>],
                     [IntrNoMem, ImmArg<ArgIndex<4>>]>, RISCVVIntrinsic {
     let VLOperand = 3;

@@ -21,10 +21,13 @@
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstVisitor.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsRISCV.h"
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/KnownBits.h"
 #include "llvm/Transforms/Utils/Local.h"
 
 using namespace llvm;
@@ -37,8 +40,10 @@ namespace {
 class RISCVCodeGenPrepare : public FunctionPass,
                             public InstVisitor<RISCVCodeGenPrepare, bool> {
   const DataLayout *DL;
+  LLVMContext *Ctx;
   const DominatorTree *DT;
   const RISCVSubtarget *ST;
+  SmallVector<Instruction *, 2> DeadInstructions;
 
 public:
   static char ID;
@@ -60,6 +65,12 @@ public:
   bool visitIntrinsicInst(IntrinsicInst &I);
   bool expandVPStrideLoad(IntrinsicInst &I);
   bool widenVPMerge(IntrinsicInst &I);
+  void visitPDIVSTEPSRIntrinsic(IntrinsicInst &I);
+  void writePDIVSTEPSRLoop(IntrinsicInst &I);
+  uint64_t getGeneratorPolynomial(uint64_t QP, unsigned Degree);
+  uint64_t computeReversedBarrettConstant(uint64_t GeneratorPolynomial);
+  uint64_t computeReversedGStarShifted(uint64_t GeneratorPolynomial,
+                                       unsigned Degree, unsigned XLen);
 };
 
 } // end anonymous namespace
@@ -273,6 +284,175 @@ bool RISCVCodeGenPrepare::expandVPStrideLoad(IntrinsicInst &II) {
   return true;
 }
 
+uint64_t RISCVCodeGenPrepare::getGeneratorPolynomial(uint64_t QP,
+                                                     unsigned Degree) {
+  // all the coefficients past the Degree must be zero
+  uint64_t maskAllHigh = ~((1 << (Degree + 1)) - 1);
+  assert((QP & maskAllHigh) == 0);
+  uint64_t ExplicitReversed = QP | 1;
+  uint64_t GeneratorPolynomial = 0;
+  for (unsigned i = 0; i < Degree + 1; ++i) {
+    if (ExplicitReversed & (1 << i)) {
+      GeneratorPolynomial |= 1 << (Degree - i);
+    }
+  }
+  return GeneratorPolynomial;
+}
+
+uint64_t RISCVCodeGenPrepare::computeReversedGStarShifted(
+    uint64_t GeneratorPolynomial, unsigned Degree, unsigned XLen) {
+  return llvm::reverseBits<uint64_t>(GeneratorPolynomial ^ (1 << Degree)) >>
+         (XLen - Degree) << 1;
+}
+
+uint64_t RISCVCodeGenPrepare::computeReversedBarrettConstant(
+    uint64_t GeneratorPolynomial) {
+  unsigned Degree = 0;
+  for (unsigned i = 0; i < 64; ++i) {
+    if ((GeneratorPolynomial >> i) & 1) {
+      Degree = i;
+    }
+  }
+  uint64_t X = (((uint64_t)1) << (2 * Degree));
+  uint64_t Quotient = 0;
+  for (int i = 2 * Degree; i >= (int)Degree; --i) {
+    if ((X >> i) & 1) {
+      X ^= (GeneratorPolynomial << (i - Degree));
+      Quotient |= 1 << (i - Degree);
+    }
+  }
+  // TODO: generalize this
+  // discard the leading term
+  uint64_t Reversed = 0;
+  // if we do it up to 64, we will need the shift
+  for (unsigned i = 0; i <= Degree; ++i) {
+    Reversed |= ((Quotient >> (Degree - i)) & 1) << i;
+  }
+  return Reversed;
+}
+
+void RISCVCodeGenPrepare::writePDIVSTEPSRLoop(IntrinsicInst &I) {
+  ConstantInt *Divisor = dyn_cast<ConstantInt>(I.getOperand(1));
+  assert(Divisor && "Divisor has to be constant!");
+  ConstantInt *NumIterations = dyn_cast<ConstantInt>(I.getOperand(2));
+  assert(NumIterations && "Number of iterations has to be constant!");
+
+  IRBuilder<> B(&I);
+  Value *Res = I.getOperand(0);
+  IntegerType *XLenTy = IntegerType::getIntNTy(*Ctx, ST->getXLen());
+  ConstantInt *ReversedDivisor =
+      ConstantInt::get(XLenTy, (Divisor->getLimitedValue()) | 1);
+  for (uint64_t i = 0; i < NumIterations->getLimitedValue(); ++i) {
+    Value *ExtractLastBit = B.CreateAnd(Res, ConstantInt::get(XLenTy, 1));
+    Value *TestLastBit =
+        B.CreateCmp(CmpInst::Predicate::ICMP_EQ, ExtractLastBit,
+                    ConstantInt::get(XLenTy, 1));
+    Value *Xored = B.CreateXor(Res, ReversedDivisor);
+    Value *Sel = B.CreateSelect(TestLastBit, Xored, Res);
+    Res = B.CreateLShr(Sel, 1);
+  }
+  I.replaceAllUsesWith(Res);
+  DeadInstructions.push_back(&I);
+  return;
+}
+
+void RISCVCodeGenPrepare::visitPDIVSTEPSRIntrinsic(IntrinsicInst &I) {
+  // Match the following pattern:
+  // %0 = and i16 %M0, %Mask
+  // %1 = xor i16 %0, %C
+  // %2 = zext i16 %1 to i64
+  // %3 = tail call i64 @llvm.riscv.pdivstepsr.i64(i64 %2, i64 %Divisor1, i64
+  // %NumSteps1) %4 = trunc i64 %3 to i16 %5 = lshr i16 %M1, %RShiftAmt %6 = xor
+  // i16 %5, %4 %7 = zext i16 %6 to i64 %8 = tail call i64
+  // @llvm.riscv.pdivstepsr.i64(i64 %Dividend, i64 %Divisor0, i64 %NumSteps0) %9
+  // = trunc i64 %8 to i16
+  Value *Dividend = I.getOperand(0);
+  ConstantInt *Divisor0 = dyn_cast<ConstantInt>(I.getOperand(1));
+  ConstantInt *NumSteps0 = dyn_cast<ConstantInt>(I.getOperand(2));
+
+  using namespace PatternMatch;
+  Value *M0 = nullptr;
+  Value *M1 = nullptr;
+  Value *C = nullptr;
+  ConstantInt *RShiftAmt = nullptr;
+  ConstantInt *Divisor1 = nullptr;
+  ConstantInt *NumSteps1 = nullptr;
+  ConstantInt *Mask = nullptr;
+  Value *FirstPDIVSTEPSRIntr = nullptr;
+  bool MatchSuccess = match(
+      Dividend, m_ZExt(m_c_Xor(m_LShr(m_Value(M1), m_ConstantInt(RShiftAmt)),
+                               m_Trunc(m_Value(FirstPDIVSTEPSRIntr)))));
+  if (!MatchSuccess) {
+    writePDIVSTEPSRLoop(I);
+    return;
+  }
+
+  // TODO: check only one use of FirstPDIVSTEPSRIntr
+  MatchSuccess =
+      match(FirstPDIVSTEPSRIntr,
+            m_Intrinsic<Intrinsic::riscv_pdivstepsr>(
+                m_ZExt(m_c_Xor(m_c_And(m_Value(M0), m_ConstantInt(Mask)),
+                               m_Value(C))),
+                m_ConstantInt(Divisor1), m_ConstantInt(NumSteps1)));
+  if (!MatchSuccess) {
+    writePDIVSTEPSRLoop(I);
+    return;
+  }
+  if (Divisor0 != Divisor1) {
+    writePDIVSTEPSRLoop(I);
+    return;
+  }
+  ConstantInt *Divisor = Divisor0;
+  if (M0 != M1) {
+    writePDIVSTEPSRLoop(I);
+    return;
+  }
+  Value *M = M0;
+  if (RShiftAmt->getLimitedValue() != NumSteps1->getLimitedValue()) {
+    writePDIVSTEPSRLoop(I);
+    return;
+  }
+
+  unsigned XLen = ST->getXLen();
+  IntegerType *XLenTy = IntegerType::getIntNTy(*Ctx, XLen);
+  ConstantInt *TotalNumSteps = ConstantInt::get(
+      XLenTy, NumSteps0->getLimitedValue() + NumSteps1->getLimitedValue());
+
+  KnownBits KnownDividend(XLen);
+  computeKnownBits(Dividend, KnownDividend, *DL);
+  unsigned S = XLen - KnownDividend.countMinLeadingZeros();
+
+  if (S != TotalNumSteps->getLimitedValue()) {
+    writePDIVSTEPSRLoop(I);
+    return;
+  }
+
+  IRBuilder<> B(&I);
+  C = B.CreateXor(C, M);
+  C = B.CreateZExt(C, XLenTy);
+  unsigned T = Divisor->getValue().getActiveBits() - 1;
+  uint64_t GeneratorPolynomial =
+      getGeneratorPolynomial(Divisor->getZExtValue(), T);
+  Module *Mod = I.getParent()->getParent()->getParent();
+  Function *CLMULFunction =
+      Intrinsic::getOrInsertDeclaration(Mod, Intrinsic::riscv_clmul, XLenTy);
+  Function *CLMULHFunction =
+      Intrinsic::getOrInsertDeclaration(Mod, Intrinsic::riscv_clmulh, XLenTy);
+
+  ConstantInt *ReversedBarretConstant = ConstantInt::get(
+      XLenTy, computeReversedBarrettConstant(GeneratorPolynomial));
+
+  C = B.CreateCall(CLMULFunction, {C, ReversedBarretConstant});
+  C = B.CreateShl(C, XLen - T);
+  ConstantInt *ReversedGStarShifted = ConstantInt::get(
+      XLenTy, computeReversedGStarShifted(GeneratorPolynomial, T, XLen));
+  Value *R = B.CreateCall(CLMULHFunction, {C, ReversedGStarShifted});
+
+  I.replaceAllUsesWith(R);
+  DeadInstructions.push_back(&I);
+  return;
+}
+
 bool RISCVCodeGenPrepare::runOnFunction(Function &F) {
   if (skipFunction(F))
     return false;
@@ -283,12 +463,31 @@ bool RISCVCodeGenPrepare::runOnFunction(Function &F) {
 
   DL = &F.getDataLayout();
   DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  // TODO: do we use the DL declared above or this one?
+  // DL = &F.getParent()->getDataLayout();
+  Ctx = &F.getContext();
 
   bool MadeChange = false;
-  for (auto &BB : F)
+  for (auto &BB : F) {
+    for (BasicBlock::reverse_iterator RI = BB.rbegin(); RI != BB.rend(); ++RI) {
+      IntrinsicInst *Intr = dyn_cast<IntrinsicInst>(&*RI);
+      if (!Intr)
+        continue;
+      if (Intr->getIntrinsicID() == Intrinsic::riscv_pdivstepsr) {
+        visitPDIVSTEPSRIntrinsic(*Intr);
+        MadeChange = true;
+      }
+      continue;
+    }
     for (Instruction &I : llvm::make_early_inc_range(BB))
       MadeChange |= visit(I);
+  }
 
+  for (Instruction *I : DeadInstructions) {
+    bool InstructionIsDead = RecursivelyDeleteTriviallyDeadInstructions(I);
+    assert(InstructionIsDead && "Trying to delete live instruction!");
+  }
+  DeadInstructions.clear();
   return MadeChange;
 }
 
