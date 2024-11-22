@@ -1,4 +1,5 @@
 ;RUN: llc -mtriple=armv7-eabi %s -o - | FileCheck %s
+;RUN: llc -mtriple=armv7-msvc %s -o - | FileCheck %s
 ;Test that global variables and functions are assigned to correct sections.
 
 target datalayout = "e-m:e-p:32:32-i64:64-v128:64:128-a:0:32-n32-S64"
