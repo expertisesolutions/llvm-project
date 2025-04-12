@@ -607,6 +607,97 @@ def VENTANA_VEYRON_V1 : RISCVProcessorModel<"veyron-v1",
   let MImpID = 0x111;
 }
 
+// TODO: add these extensions to v2 once they are supported in llvm:
+//Zam
+//Smepmp
+//Ss1-12
+//Svpbmt
+//H
+//RVWMO
+//Zvfhmin
+//Ssnpm
+//Svvptc
+//Xvwmatmul
+//Zicclsm
+//Svade
+//Ssccptr
+//Sstvecd
+//Sstvala
+//Sscounterenw
+//Ssu64xl
+//Sha
+//Shcounterenw
+//Shvstvala
+//Shtvala
+//Shvstvecd
+//Shvsatpa
+//Shgatpa
+//Sdtrig
+
+def VENTANA_VEYRON_V2 : RISCVProcessorModel<"veyron-v2",
+                                            NoSchedModel,
+                                            [Feature64Bit,
+                                             FeatureStdExtI,
+                                             FeatureStdExtM,
+                                             FeatureStdExtA,
+                                             FeatureStdExtF,
+                                             FeatureStdExtD,
+                                             FeatureStdExtC,
+                                             FeatureStdExtZicsr,
+                                             FeatureStdExtZifencei,
+                                             FeatureStdExtZicntr,
+                                             FeatureStdExtZihpm,
+                                             FeatureStdExtZihintpause,
+                                             FeatureStdExtZba,
+                                             FeatureStdExtZbb,
+                                             FeatureStdExtZbc,
+                                             FeatureStdExtZbs,
+                                             FeatureStdExtZicbom,
+                                             FeatureStdExtZicbop,
+                                             FeatureStdExtZicboz,
+                                             FeatureStdExtSmstateen,
+                                             FeatureStdExtSscofpmf,
+                                             FeatureStdExtSstc,
+                                             FeatureStdExtSvinval,
+                                             FeatureStdExtSvnapot,
+                                             FeatureStdExtB,
+                                             FeatureStdExtZcb,
+                                             FeatureStdExtZicond,
+                                             FeatureStdExtZihintntl,
+                                             FeatureStdExtZimop,
+                                             FeatureStdExtZcmop,
+                                             FeatureStdExtZawrs,
+                                             FeatureStdExtZfa,
+                                             FeatureStdExtZfhmin,
+                                             FeatureStdExtZfbfmin,
+                                             FeatureStdExtV,
+                                             FeatureStdExtZvfbfmin,
+                                             FeatureStdExtZvfbfwma,
+                                             FeatureStdExtZvkn,
+                                             FeatureStdExtZvkg,
+                                             FeatureStdExtZvbb,
+                                             FeatureStdExtZvbc,
+                                             FeatureStdExtZvkt,
+                                             FeatureStdExtSmnpm,
+                                             FeatureStdExtSspm,
+                                             FeatureStdExtZkt,
+                                             FeatureStdExtZiccif,
+                                             FeatureStdExtZiccrse,
+                                             FeatureStdExtZiccamoa,
+                                             FeatureStdExtZa64rs,
+                                             FeatureStdExtZic64b,
+                                             FeatureStdExtZama16b,
+                                             FeatureStdExtSsstrict,
+                                             FeatureStdExtZvl512b,
+                                             FeatureUnalignedScalarMem,
+                                             FeatureUnalignedVectorMem],
+                                             [TuneLUIADDIFusion,
+                                              TuneAUIPCADDIFusion,
+                                              TuneZExtHFusion,
+                                              TuneZExtWFusion,
+                                              TuneShiftedZExtWFusion,
+                                              TuneLDADDFusion]>;
+
 def XIANGSHAN_NANHU : RISCVProcessorModel<"xiangshan-nanhu",
                                           XiangShanNanHuModel,
                                           [Feature64Bit,
