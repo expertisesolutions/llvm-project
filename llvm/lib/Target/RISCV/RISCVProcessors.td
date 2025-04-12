@@ -608,31 +608,31 @@ def VENTANA_VEYRON_V1 : RISCVProcessorModel<"veyron-v1",
 }
 
 // TODO: add these extensions to v2 once they are supported in llvm:
-//Zam
-//Smepmp
-//Ss1-12
-//Svpbmt
-//H
-//RVWMO
-//Zvfhmin
-//Ssnpm
-//Svvptc
-//Xvwmatmul
-//Zicclsm
-//Svade
-//Ssccptr
-//Sstvecd
-//Sstvala
-//Sscounterenw
-//Ssu64xl
-//Sha
-//Shcounterenw
-//Shvstvala
-//Shtvala
-//Shvstvecd
-//Shvsatpa
-//Shgatpa
-//Sdtrig
+// Zam
+// Smepmp
+// Ss1-12
+// Svpbmt
+// H
+// RVWMO
+// Zvfhmin
+// Ssnpm
+// Svvptc
+// Xvwmatmul
+// Zicclsm
+// Svade
+// Ssccptr
+// Sstvecd
+// Sstvala
+// Sscounterenw
+// Ssu64xl
+// Sha
+// Shcounterenw
+// Shvstvala
+// Shtvala
+// Shvstvecd
+// Shvsatpa
+// Shgatpa
+// Sdtrig
 
 def VENTANA_VEYRON_V2 : RISCVProcessorModel<"veyron-v2",
                                             NoSchedModel,

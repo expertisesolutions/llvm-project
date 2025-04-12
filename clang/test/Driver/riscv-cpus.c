@@ -283,11 +283,16 @@
 // MCPU-VEYRON-V1: "-target-abi" "lp64d"
 
 // RUN: %clang --target=riscv64 -### -c %s 2>&1 -mcpu=veyron-v2 | FileCheck -check-prefix=MCPU-VEYRON-V2 %s
+<<<<<<< HEAD
+=======
+// MCPU-VEYRON-V2: "-target-cpu" "veyron-v2"
+>>>>>>> 6a0e8bfe2147 (Add veyron-v2 CPU declaration)
 // MCPU-VEYRON-V2: "-target-feature" "+m"
 // MCPU-VEYRON-V2: "-target-feature" "+a"
 // MCPU-VEYRON-V2: "-target-feature" "+f"
 // MCPU-VEYRON-V2: "-target-feature" "+d"
 // MCPU-VEYRON-V2: "-target-feature" "+c"
+<<<<<<< HEAD
 // MCPU-VEYRON-V2: "-target-feature" "+b"
 // MCPU-VEYRON-V2: "-target-feature" "+v"
 // MCPU-VEYRON-V2: "-target-feature" "+zic64b"
@@ -325,11 +330,31 @@
 // MCPU-VEYRON-V2: "-target-feature" "+zkt"
 // MCPU-VEYRON-V2: "-target-feature" "+zvbb"
 // MCPU-VEYRON-V2: "-target-feature" "+zvbc"
+=======
+// MCPU-VEYRON-V2: "-target-feature" "+v"
+// MCPU-VEYRON-V2: "-target-feature" "+zicbom"
+// MCPU-VEYRON-V2: "-target-feature" "+zicbop"
+// MCPU-VEYRON-V2: "-target-feature" "+zicboz"
+// MCPU-VEYRON-V2: "-target-feature" "+zicntr"
+// MCPU-VEYRON-V2: "-target-feature" "+zicsr"
+// MCPU-VEYRON-V2: "-target-feature" "+zifencei"
+// MCPU-VEYRON-V2: "-target-feature" "+zihintpause"
+// MCPU-VEYRON-V2: "-target-feature" "+zihpm"
+// MCPU-VEYRON-V2: "-target-feature" "+zawrs"
+// MCPU-VEYRON-V2: "-target-feature" "+zfhmin"
+// MCPU-VEYRON-V2: "-target-feature" "+zba"
+// MCPU-VEYRON-V2: "-target-feature" "+zbb"
+// MCPU-VEYRON-V2: "-target-feature" "+zbc"
+// MCPU-VEYRON-V2: "-target-feature" "+zbkc"
+// MCPU-VEYRON-V2: "-target-feature" "+zbs"
+// MCPU-VEYRON-V2: "-target-feature" "+zkt"
+>>>>>>> 6a0e8bfe2147 (Add veyron-v2 CPU declaration)
 // MCPU-VEYRON-V2: "-target-feature" "+zve32f"
 // MCPU-VEYRON-V2: "-target-feature" "+zve32x"
 // MCPU-VEYRON-V2: "-target-feature" "+zve64d"
 // MCPU-VEYRON-V2: "-target-feature" "+zve64f"
 // MCPU-VEYRON-V2: "-target-feature" "+zve64x"
+<<<<<<< HEAD
 // MCPU-VEYRON-V2: "-target-feature" "+zvfbfmin"
 // MCPU-VEYRON-V2: "-target-feature" "+zvfbfwma"
 // MCPU-VEYRON-V2: "-target-feature" "+zvkb"
@@ -353,6 +378,12 @@
 // MCPU-VEYRON-V2: "-target-feature" "+sstc"
 // MCPU-VEYRON-V2: "-target-feature" "+svinval"
 // MCPU-VEYRON-V2: "-target-feature" "+svnapot"
+=======
+// MCPU-VEYRON-V2: "-target-feature" "+zvl512b"
+// MCPU-VEYRON-V2: "-target-feature" "+zvl128b"
+// MCPU-VEYRON-V2: "-target-feature" "+zvl32b"
+// MCPU-VEYRON-V2: "-target-feature" "+zvl64b"
+>>>>>>> 6a0e8bfe2147 (Add veyron-v2 CPU declaration)
 // MCPU-VEYRON-V2: "-target-abi" "lp64d"
 
 // RUN: %clang --target=riscv64 -### -c %s 2>&1 -mtune=veyron-v1 | FileCheck -check-prefix=MTUNE-VEYRON-V1 %s
