@@ -21,7 +21,7 @@ build-test-benchmark:
 
     # check that we can execute riscv64 with the plugin
     - cp $TEST_RISCV64 .
-    - (export USE_QEMU_PLUGIN="1"; export QEMU_CPU="veyron-v1"; ./test-riscv64.elf)
+    - (export USE_QEMU_PLUGIN="1"; export QEMU_CPU="veyron-v2"; ./test-riscv64.elf)
     - ls
 
     - export BRANCH_NAME=$CI_COMMIT_SHORT_SHA

@@ -64,7 +64,7 @@ Description: LLVM, $(BRANCH_NAME) \n\
 	dpkg-deb --root-owner-group --build $(INSTALL_DIR)
 	mv $(STAGING_DIR)/install.deb $(STAGING_DIR)/ventana-llvm.deb
 
-MCPU=veyron-v1
+MCPU=veyron-v2
 SPEC_OPTIMIZE_FLAGS="\
   -mcpu=$(MCPU) \
   --sysroot=$(INSTALL_DIR) \
