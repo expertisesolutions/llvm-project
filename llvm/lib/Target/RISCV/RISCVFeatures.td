@@ -1119,6 +1119,13 @@ def HasVendorXVentanaCondOps : Predicate<"Subtarget->hasVendorXVentanaCondOps()"
                                AssemblerPredicate<(all_of FeatureVendorXVentanaCondOps),
                                    "'XVentanaCondOps' (Ventana Conditional Ops)">;
 
+def FeatureVendorXVentanaMatmul
+    : RISCVExtension<1, 0,
+                     "Ventana Matrix Multiply">;
+def HasVendorXVentanaMatmul : Predicate<"Subtarget->hasVendorXVentanaMatmul()">,
+                              AssemblerPredicate<(all_of FeatureVendorXVentanaMatmul),
+                                    "'XVentanaMatmul' (Ventana Matrix Multiply)">;
+
 // T-Head Extensions
 
 def FeatureVendorXTHeadBa

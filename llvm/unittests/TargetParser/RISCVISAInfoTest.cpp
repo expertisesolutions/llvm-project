@@ -1179,6 +1179,7 @@ R"(All available -march extensions for RISC-V
     xtheadsync           1.0
     xtheadvdot           1.0
     xventanacondops      1.0
+    xventanamatmul       1.0
     xwchc                2.2
 
 Experimental extensions

@@ -232,6 +232,7 @@
 ; CHECK-NEXT:   xtheadsync                       - 'XTHeadSync' (T-Head multicore synchronization instructions).
 ; CHECK-NEXT:   xtheadvdot                       - 'XTHeadVdot' (T-Head Vector Extensions for Dot).
 ; CHECK-NEXT:   xventanacondops                  - 'XVentanaCondOps' (Ventana Conditional Ops).
+; CHECK-NEXT:   xventanamatmul                   - 'XVentanaMatmul' (Ventana Matrix Multiply).
 ; CHECK-NEXT:   xwchc                            - 'Xwchc' (WCH/QingKe additional compressed opcodes).
 ; CHECK-NEXT:   za128rs                          - 'Za128rs' (Reservation Set Size of at Most 128 Bytes).
 ; CHECK-NEXT:   za64rs                           - 'Za64rs' (Reservation Set Size of at Most 64 Bytes).

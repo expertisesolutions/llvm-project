@@ -1873,7 +1873,7 @@ multiclass VPseudoILoad<bit Ordered> {
           defvar Vreg = dataEMUL.vrclass;
           defvar IdxVreg = idxEMUL.vrclass;
           defvar HasConstraint = !ne(dataEEW, idxEEW);
-          defvar TypeConstraints = 
+          defvar TypeConstraints =
             !if(!eq(dataEEW, idxEEW), 1, !if(!gt(dataEEW, idxEEW), !if(!ge(idxEMULOctuple, 8), 3, 1), 2));
           let VLMul = dataEMUL.value in {
             def "EI" # idxEEW # "_V_" # IdxLInfo # "_" # DataLInfo :
@@ -2894,7 +2894,7 @@ multiclass VPseudoVWALU_VV_VX<bit Commutable = 0> {
     defm "" : VPseudoBinaryW_VV<m, Commutable=Commutable>,
               SchedBinary<"WriteVIWALUV", "ReadVIWALUV", "ReadVIWALUV", mx,
                           forcePassthruRead=true>;
-    defm "" : VPseudoBinaryW_VX<m>, 
+    defm "" : VPseudoBinaryW_VX<m>,
               SchedBinary<"WriteVIWALUX", "ReadVIWALUV", "ReadVIWALUX", mx,
                           forcePassthruRead=true>;
   }
@@ -4289,6 +4289,28 @@ class VPatTiedBinaryMaskRoundingMode<string intrinsic_name,
                    (mask_type VMV0:$vm),
                    (XLenVT timm:$round),
                    GPR:$vl, sew, (XLenVT timm:$policy))>;
+
+class VPatTernaryNoMask<string intrinsic,
+                        string inst,
+                        string kind,
+                        ValueType result_type,
+                        ValueType op1_type,
+                        ValueType op2_type,
+                        int sew,
+                        LMULInfo vlmul,
+                        VReg result_reg_class,
+                        RegisterClass op1_reg_class,
+                        DAGOperand op2_kind> :
+  Pat<(result_type (!cast<Intrinsic>(intrinsic)
+                    (result_type result_reg_class:$rs3),
+                    (op1_type op1_reg_class:$rs1),
+                    (op2_type op2_kind:$rs2),
+                    VLOpFrag)),
+                   (!cast<Instruction>(inst#"_"#kind#"_"#vlmul.MX)
+                    result_reg_class:$rs3,
+                    (op1_type op1_reg_class:$rs1),
+                    op2_kind:$rs2,
+                    GPR:$vl, sew)>;
 
 class VPatTernaryNoMaskTU<string intrinsic,
                           string inst,
@@ -5769,7 +5791,7 @@ multiclass VPatConversionVI_VF_RM<string intrinsic,
   }
 }
 
-multiclass VPatConversionVI_VF_RTZ<string intrinsic, 
+multiclass VPatConversionVI_VF_RTZ<string intrinsic,
                                            string instruction> {
   foreach fvti = AllFloatVectors in {
     defvar ivti = GetIntVTypeInfo<fvti>.Vti;
