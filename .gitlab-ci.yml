@@ -1,0 +1,112 @@
+# image should be available on the server
+image:
+  name: gitlab.dc1.ventanamicro.com:5005/toolchain/llvm
+  entrypoint: [""]
+
+stages:
+  - build
+  - test
+  - deploy
+
+# TODO: split this up into several jobs. To do this,
+# need to figure out how to pass files from one job to another.
+build-test-benchmark:
+  tags:
+    - toolchain
+  stage: build
+  script:
+    - echo "Hello, $GITLAB_USER_LOGIN!"
+    - whoami
+    - pwd
+
+    # check that we can execute riscv64 with the plugin
+    - cp $TEST_RISCV64 .
+    - (export USE_QEMU_PLUGIN="1"; export QEMU_CPU="veyron-v1"; ./test-riscv64.elf)
+    - ls
+
+    - export BRANCH_NAME=$CI_COMMIT_SHORT_SHA
+    # check that needed volumes are mounter correctly
+    - export CCACHE_DIR=/mnt/ccache/llvm
+    - export ARTIFACTS_DIR=/mnt/artifacts/llvm
+    - ls $CCACHE_DIR
+    - ls $ARTIFACTS_DIR
+
+    # check that ccache is actually working
+    - ccache -s -v
+
+    - export STAGING_DIR=$ARTIFACTS_DIR/staging/$BRANCH_NAME
+    - echo "Using branch_name = $BRANCH_NAME and staging dir $STAGING_DIR"
+
+    # Check if $STAGING_DIR/job_completed exists to avoid
+    # re-creating the same baseline again
+    - |-
+      if [ -f $STAGING_DIR/job_completed ]; then
+        echo "$STAGING_DIR/job_completed exists. Skipping build-test-benchmark"
+        exit 0
+      fi
+
+    - rm -rf $STAGING_DIR
+    - mkdir -p $STAGING_DIR
+
+    - cp -r /mnt/spec2017 $STAGING_DIR/
+    - export SPEC_DIR=$STAGING_DIR/spec2017
+
+    - export BUILD_DIR=$STAGING_DIR/build
+    - export INSTALL_DIR=$STAGING_DIR/install
+
+    - make prepare
+    - make configure_llvm
+    - make check_llvm
+    - make install_llvm
+
+    # run benchmarks with test workload
+    - make clean_spec
+    - make run_spec_test
+    - make check_spec_logs
+
+    # run benchmarks with train workload
+    - make clean_spec
+    - make run_spec_train
+    - make check_spec_logs
+
+    # MKDIR_CP is defined by the docker container
+    - $MKDIR_CP  -listOfPaths $(ls $SPEC_DIR/cpu2017/benchspec/CPU/*/build/*/*.out) -pathPrefix $STAGING_DIR
+    - $MKDIR_CP  -listOfPaths $(ls $SPEC_DIR/cpu2017/benchspec/CPU/*/run/*/*.collect) -pathPrefix $STAGING_DIR
+    - python3 $PARSE_BENCHMARK_DATA -pathToSpec $SPEC_DIR/cpu2017 -pathToOutput $STAGING_DIR/parsedBenchmarkData.json
+
+    # Baseline has to be first in the -listOfJsonFiles
+    #- python3 $REPORT -listOfJsonFiles parsedBenchmarkData.json  -dashBoardFile $ARTIFACTS_DIR/dashboard.csv | tee report.txt
+    - python3 $REPORT -listOfJsonFiles $ARTIFACTS_DIR/commited/baseline/parsedBenchmarkData.json $STAGING_DIR/parsedBenchmarkData.json  -dashBoardFile $ARTIFACTS_DIR/dashboard.csv | tee report.txt
+    - touch $STAGING_DIR/job_completed
+
+
+update-baseline:
+  tags:
+    - toolchain
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev-staging"
+  script:
+    - export ARTIFACTS_DIR=/mnt/artifacts/llvm
+    - export BRANCH_NAME=$CI_COMMIT_SHORT_SHA
+    - export STAGING_DIR=$ARTIFACTS_DIR/staging/$BRANCH_NAME
+    - export INSTALL_DIR=$STAGING_DIR/install
+
+    - echo "Using branch_name = $BRANCH_NAME"
+
+    # Check if $STAGING_DIR/job_completed exists before proceeding
+    # to not move the baseline to an incompleted run
+    - |-
+      if [ ! -f $STAGING_DIR/job_completed ]; then
+        echo "$STAGING_DIR/job_completed does not exist. Do no update spec baseline"
+        exit 1
+      fi
+
+    - make package_llvm
+    - mv $STAGING_DIR/ventana-llvm.deb $ARTIFACTS_DIR/latest_build/ventana-llvm.deb
+    - rm -rf $STAGING_DIR/build
+    - rm -rf $STAGING_DIR/install
+    - rm -rf $STAGING_DIR/spec2017
+
+    # GET_THIS_COMMIT_NUM is defined by the docker container
+    - python3 $UPDATE_ARTIFACTS -artifactsDir $ARTIFACTS_DIR -branchToCommit=$BRANCH_NAME -commitNo=$(python3 $GET_THIS_COMMIT_NUM -commitedDir $ARTIFACTS_DIR/commited)
