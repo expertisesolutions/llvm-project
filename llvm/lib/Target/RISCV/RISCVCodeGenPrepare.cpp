@@ -71,6 +71,8 @@ public:
   uint64_t computeReversedBarrettConstant(uint64_t GeneratorPolynomial);
   uint64_t computeReversedGStarShifted(uint64_t GeneratorPolynomial,
                                        unsigned Degree, unsigned XLen);
+
+  bool matchRISCVAddAbsDiff(IntrinsicInst &I);
 };
 
 } // end anonymous namespace
@@ -453,6 +455,100 @@ void RISCVCodeGenPrepare::visitPDIVSTEPSRIntrinsic(IntrinsicInst &I) {
   return;
 }
 
+static Value *stripVZExt(const Value *X, Type *ElTy, Type *FromElTy) {
+  VectorType *VTy = dyn_cast<VectorType>(X->getType());
+  if (!VTy)
+    return nullptr;
+  if (VTy->getElementType() != ElTy)
+    return nullptr;
+  // TODO: non-zero values
+  if (dyn_cast<ConstantAggregateZero>(X))
+    return ConstantAggregateZero::get(
+        VectorType::get(FromElTy, VTy->getElementCount()));
+
+  const ZExtInst *ZExt = dyn_cast<ZExtInst>(X);
+  if (!ZExt)
+    return nullptr;
+  VectorType *VTyIn = dyn_cast<VectorType>(ZExt->getSrcTy());
+  if (!VTyIn)
+    return nullptr;
+  if (VTyIn->getElementType() != FromElTy)
+    return nullptr;
+  return ZExt->getOperand(0);
+}
+
+bool RISCVCodeGenPrepare::matchRISCVAddAbsDiff(IntrinsicInst &II) {
+  if (!ST->hasVendorXVentanaVwadaccu())
+    return false;
+  // TODO: strictly speaking we don't need this check, we'll remove it when we
+  // upstream this.
+  if (!II.hasOneUse())
+    return false;
+
+  VectorType *VTy = dyn_cast<VectorType>(II.getType());
+  if (!VTy)
+    return false;
+
+  ZExtInst *ZExtToI32 = dyn_cast<ZExtInst>(II.use_begin()->getUser());
+  if (!ZExtToI32)
+    return false;
+  if (!stripVZExt(ZExtToI32, Type::getInt32Ty(*Ctx), Type::getInt16Ty(*Ctx)))
+    return false;
+
+  Value *X = nullptr;
+  Value *Y = nullptr;
+  using namespace PatternMatch;
+  if (!match(II.getArgOperand(0), m_Sub(m_Value(X), m_Value(Y))))
+    return false;
+
+  Value *Arg0 = stripVZExt(X, Type::getInt16Ty(*Ctx), Type::getInt8Ty(*Ctx));
+  if (!Arg0)
+    return false;
+  Value *Arg1 = stripVZExt(Y, Type::getInt16Ty(*Ctx), Type::getInt8Ty(*Ctx));
+  if (!Arg1)
+    return false;
+
+  ElementCount EC = cast<VectorType>(ZExtToI32->getType())->getElementCount();
+  if (EC.isScalable())
+    return false;
+  unsigned NumOfElements = EC.getKnownMinValue();
+  // TODO: handle other vector sizes.
+  if (NumOfElements != 16 && NumOfElements != 8)
+    return false;
+
+  Value *AccumulateInto = nullptr;
+  Instruction *InstToReplace = nullptr;
+  if (ZExtToI32->hasOneUse()) {
+    Instruction *AddInst =
+        dyn_cast<Instruction>(ZExtToI32->use_begin()->getUser());
+    if (AddInst && (AddInst->getOpcode() == Instruction::Add)) {
+      Value *OtherVal = AddInst->getOperand(1);
+      if (OtherVal == ZExtToI32)
+        OtherVal = AddInst->getOperand(0);
+      AccumulateInto = OtherVal;
+      InstToReplace = AddInst;
+    }
+  }
+  if (!AccumulateInto) {
+    AccumulateInto =
+        Constant::getNullValue(VectorType::get(Type::getInt32Ty(*Ctx), EC));
+    InstToReplace = ZExtToI32;
+  }
+
+  IRBuilder<> Builder(&II);
+  Value *Res = Builder.CreateIntrinsic(
+      Intrinsic::riscv_addabsdiff,
+      {VectorType::get(Type::getInt32Ty(*Ctx), EC),
+       VectorType::get(Type::getInt8Ty(*Ctx), EC)},
+      {AccumulateInto, Arg0, Arg1,
+       ConstantInt::get(IntegerType::getInt64Ty(*Ctx), NumOfElements),
+       ConstantInt::get(IntegerType::getInt64Ty(*Ctx),
+                        RISCVVType::TAIL_AGNOSTIC)});
+  InstToReplace->replaceAllUsesWith(Res);
+  DeadInstructions.push_back(InstToReplace);
+  return true;
+}
+
 bool RISCVCodeGenPrepare::runOnFunction(Function &F) {
   if (skipFunction(F))
     return false;
@@ -476,6 +572,9 @@ bool RISCVCodeGenPrepare::runOnFunction(Function &F) {
       if (Intr->getIntrinsicID() == Intrinsic::riscv_pdivstepsr) {
         visitPDIVSTEPSRIntrinsic(*Intr);
         MadeChange = true;
+      }
+      if (Intr->getIntrinsicID() == Intrinsic::abs) {
+        MadeChange |= matchRISCVAddAbsDiff(*Intr);
       }
       continue;
     }

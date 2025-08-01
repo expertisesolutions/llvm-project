@@ -22,4 +22,8 @@ let TargetPrefix = "riscv" in {
   def int_riscv_ventana_vwmatmul_ss : RISCVVentanaCustomVMACC;
   def int_riscv_ventana_vwmatmul_su : RISCVVentanaCustomVMACC;
   def int_riscv_ventana_vwmatmul_uu : RISCVVentanaCustomVMACC;
+
+  def int_riscv_addabsdiff : DefaultAttrsIntrinsic<
+      [llvm_anyint_ty], [LLVMMatchType<0>, llvm_anyint_ty, LLVMMatchType<1>, llvm_i64_ty, llvm_i64_ty],
+      [IntrNoMem, IntrSpeculatable, IntrWillReturn]>;
 }

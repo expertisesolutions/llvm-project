@@ -10991,6 +10991,27 @@ SDValue RISCVTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
 
     return NewNode;
   }
+  case Intrinsic::riscv_addabsdiff: {
+    MVT VT = Op.getSimpleValueType();
+    if (VT.isScalableVector())
+      return Op;
+
+    assert(VT.isFixedLengthVector() && "Unexpected value type!");
+    SmallVector<SDValue> Operands{Op->op_values()};
+    for (SDValue &V : Operands) {
+      EVT ValType = V.getValueType();
+      if (!ValType.isFixedLengthVector())
+        continue;
+      MVT OpContainerVT =
+          getContainerForFixedLengthVector(V.getSimpleValueType());
+      V = convertToScalableVector(OpContainerVT, V, DAG, Subtarget);
+    }
+    MVT NewRetVT = getContainerForFixedLengthVector(VT);
+    SDValue NewNode =
+        DAG.getNode(ISD::INTRINSIC_WO_CHAIN, DL, NewRetVT, Operands);
+    NewNode = convertFromScalableVector(VT, NewNode, DAG, Subtarget);
+    return NewNode;
+  }
   }
 
   return lowerVectorIntrinsicScalars(Op, DAG, Subtarget);

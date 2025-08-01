@@ -1126,6 +1126,13 @@ def HasVendorXVentanaMatmul : Predicate<"Subtarget->hasVendorXVentanaMatmul()">,
                               AssemblerPredicate<(all_of FeatureVendorXVentanaMatmul),
                                     "'XVentanaMatmul' (Ventana Matrix Multiply)">;
 
+def FeatureVendorXVentanaVwadaccu
+    : RISCVExtension<1, 0,
+                     "Ventana Widening Absolute Difference Accumulate">;
+def HasVendorXVentanaVwadaccu : Predicate<"Subtarget->hasVendorXVentanaVwadaccu()">,
+                                 AssemblerPredicate<(all_of FeatureVendorXVentanaVwadaccu),
+                                 "'XVentanaVwadaccu' (Ventana Widening Absolute Difference Accumulate)">;
+
 // T-Head Extensions
 
 def FeatureVendorXTHeadBa

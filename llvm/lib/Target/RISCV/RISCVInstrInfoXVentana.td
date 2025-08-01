@@ -132,3 +132,76 @@ let Predicates = [IsRV64, HasVendorXVentanaMatmul] in {
   defm : VPatVVentanaVMACC<"vwmatmul_su", "XVWMATMUL_SU", "VV", VentanaInfoPairs, vint8m1_t>;
   defm : VPatVVentanaVMACC<"vwmatmul_uu", "XVWMATMUL_UU", "VV", VentanaInfoPairs, vint8m1_t>;
 }
+
+// Vector absolute difference accumulate
+// TODO: add all possible variants.
+// TODO: use multiclass.
+def VWADACCU_VV : RVInstVV<
+  0b010000,
+  OPIVV,
+  (outs VR:$vd),
+  (ins VR: $vs0, VR:$vs1, VR:$vs2),
+  "vwadaccu.vv",
+  "$vd, $vs1, $vs2"
+> {
+  let Inst{6-0} = OPC_CUSTOM_2.Value;
+  let vm = 1;
+  let hasSideEffects = 0;
+  let mayLoad = 0;
+  let mayStore = 0;
+  let Uses = [VTYPE, VL];
+  let Constraints = "$vd = $vs0";
+}
+
+let Predicates = [IsRV64, HasVInstructionsI64, HasVendorXVentanaVwadaccu], hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCodeGenOnly = 1, SEW  = 8 in {
+  def PseudoVWADACCU_VV_MF8:
+  RISCVVPseudo<
+    (outs VR:$vd),
+    (ins VR:$vs0, VR:$vs1, VR:$vs2, ixlenimm:$vl, ixlenimm:$sew, ixlenimm:$policy),
+    []
+  > {
+    let mayLoad = 0;
+    let mayStore = 0;
+    let hasSideEffects = 0;
+    let HasVLOp = 1;
+    let HasSEWOp = 1;
+    let HasVecPolicyOp = 1;
+    let VLMul = 0b101;
+    let Constraints = "$vd = $vs0";
+    let isConvertibleToThreeAddress = 1;
+    let IsTiedPseudo = 1;
+  }
+
+  def PseudoVWADACCU_VV_MF4:
+  RISCVVPseudo<
+    (outs VR:$vd),
+    (ins VR:$vs0, VR:$vs1, VR:$vs2, ixlenimm:$vl, ixlenimm:$sew, ixlenimm:$policy),
+    []
+  > {
+    let mayLoad = 0;
+    let mayStore = 0;
+    let hasSideEffects = 0;
+    let HasVLOp = 1;
+    let HasSEWOp = 1;
+    let HasVecPolicyOp = 1;
+    let VLMul = 0b110;
+    let Constraints = "$vd = $vs0";
+    let isConvertibleToThreeAddress = 1;
+    let IsTiedPseudo = 1;
+  }
+}
+
+def nxv1i8_vr:  PatLeaf<(nxv1i8   VR: $R)>;
+def nxv1i32_vr:  PatLeaf<(nxv1i32   VR: $R)>;
+def nxv2i8_vr:  PatLeaf<(nxv2i8   VR: $R)>;
+def nxv2i32_vr:  PatLeaf<(nxv2i32   VR: $R)>;
+
+def : Pat<
+  (nxv1i32 (int_riscv_addabsdiff nxv1i32_vr: $vs0, nxv1i8_vr: $vs1, nxv1i8_vr: $vs2, (XLenVT imm:$vl), (XLenVT imm:$policy))),
+  (PseudoVWADACCU_VV_MF8 nxv1i32_vr: $vs0, nxv1i8_vr: $vs1, nxv1i8_vr: $vs2, (XLenVT imm:$vl), 3, (XLenVT imm:$policy))
+>;
+
+def : Pat<
+  (nxv2i32 (int_riscv_addabsdiff nxv2i32_vr: $vs0, nxv2i8_vr: $vs1, nxv2i8_vr: $vs2, (XLenVT imm:$vl), (XLenVT imm:$policy))),
+  (PseudoVWADACCU_VV_MF4 nxv2i32_vr: $vs0, nxv2i8_vr: $vs1, nxv2i8_vr: $vs2, (XLenVT imm:$vl), 3, (XLenVT imm:$policy))
+>;
