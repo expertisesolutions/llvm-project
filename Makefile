@@ -69,6 +69,7 @@ SPEC_OPTIMIZE_FLAGS="\
   -mcpu=$(MCPU) \
   --sysroot=$(INSTALL_DIR) \
   -O3 \
+  -mllvm -riscv-v-slp-prefer-alt-opc-vectorization=true \
   -mllvm -stats \
 "
 SPEC_LD_FLAGS="\
