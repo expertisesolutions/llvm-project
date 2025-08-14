@@ -999,6 +999,11 @@ foreach mx = SchedMxList in {
     def : ReadAdvance<!cast<SchedRead>("ReadVPassthru_" # mx  # "_E" # sew), 0>;
 }
 
+let Latency = 1, ReleaseAtCycles = [1] in {
+def "" : WriteRes<WriteVwadaccu, [VeyronV2Vwadaccu]>;
+}
+def : ReadAdvance<ReadVwadaccu, 0>;
+
 //===----------------------------------------------------------------------===//
 // Unsupported extensions
 defm : UnsupportedSchedZbkb;

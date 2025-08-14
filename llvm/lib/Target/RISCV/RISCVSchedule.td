@@ -519,6 +519,7 @@ include "RISCVScheduleZb.td"
 include "RISCVScheduleV.td"
 include "RISCVScheduleXSf.td"
 include "RISCVScheduleZvk.td"
+include "RISCVScheduleVwadaccu.td"
 
 // Vendor Extensions
 multiclass UnsupportedSchedXsf {

@@ -159,7 +159,8 @@ let Predicates = [IsRV64, HasVInstructionsI64, HasVendorXVentanaVwadaccu], hasSi
     (outs VR:$vd),
     (ins VR:$vs0, VR:$vs1, VR:$vs2, ixlenimm:$vl, ixlenimm:$sew, ixlenimm:$policy),
     []
-  > {
+  >,
+  Sched<[WriteVwadaccu]> {
     let mayLoad = 0;
     let mayStore = 0;
     let hasSideEffects = 0;
@@ -177,7 +178,8 @@ let Predicates = [IsRV64, HasVInstructionsI64, HasVendorXVentanaVwadaccu], hasSi
     (outs VR:$vd),
     (ins VR:$vs0, VR:$vs1, VR:$vs2, ixlenimm:$vl, ixlenimm:$sew, ixlenimm:$policy),
     []
-  > {
+  >,
+  Sched<[WriteVwadaccu]> {
     let mayLoad = 0;
     let mayStore = 0;
     let hasSideEffects = 0;

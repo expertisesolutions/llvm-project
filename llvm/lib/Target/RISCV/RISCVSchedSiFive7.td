@@ -1447,6 +1447,7 @@ multiclass SiFive7SchedResources<int vlen, bit extraVALU,
   defm : UnsupportedSchedZbkx;
   defm : UnsupportedSchedZfa;
   defm : UnsupportedSchedZvk;
+  defm : UnsupportedSchedVwadaccu;
 }
 
 class SiFive7SchedMachineModel<int vlen> : SchedMachineModel {

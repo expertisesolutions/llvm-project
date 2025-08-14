@@ -1030,4 +1030,5 @@ defm : UnsupportedSchedZfa;
 defm : UnsupportedSchedZvk;
 defm : UnsupportedSchedSFB;
 defm : UnsupportedSchedXsf;
+defm : UnsupportedSchedVwadaccu;
 }
