@@ -1,0 +1,31 @@
+# RUN: llc -mtriple=riscv64 -mcpu=veyron-v2 \
+# RUN: -run-pass=postmisched -debug-only=machine-scheduler \
+# RUN: %s -o - 2>&1 | FileCheck  %s
+# REQUIRES: asserts
+
+# CHECK: SU(0):   renamable $x5 = LW renamable $x10, 0 :: (load (s32))
+# CHECK-NEXT:   # preds left       : 0
+# CHECK-NEXT:   # succs left       : 2
+# CHECK-NEXT:   # rdefs left       : 0
+# CHECK-NEXT:   Latency            : 4
+# CHECK-NEXT:   Depth              : 0
+# CHECK-NEXT:   Height             : 4
+# CHECK: SU(1):   SW renamable $x5, renamable $x11, 0 :: (store (s32))
+# CHECK-NEXT:   # preds left       : 2
+# CHECK-NEXT:   # succs left       : 0
+# CHECK-NEXT:   # rdefs left       : 0
+# CHECK-NEXT:   Latency            : 4
+# CHECK-NEXT:   Depth              : 4
+# CHECK-NEXT:   Height             : 0
+
+...
+---
+name:            lw_sw
+tracksRegLiveness: true
+body:             |
+  bb.0:
+    liveins: $x10, $x11
+    renamable $x5 = LW renamable $x10, 0 :: (load (s32))
+    SW renamable $x5, renamable $x11, 0 :: (store (s32))
+    PseudoRET
+...
