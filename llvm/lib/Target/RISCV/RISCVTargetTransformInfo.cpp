@@ -2743,10 +2743,6 @@ unsigned RISCVTTIImpl::getMinTripCountTailFoldingThreshold() const {
   return RVVMinTripCount;
 }
 
-bool RISCVTTIImpl::preferAlternateOpcodeVectorization() const {
-  return ST->enableUnalignedVectorMem();
-}
-
 TTI::AddressingModeKind
 RISCVTTIImpl::getPreferredAddressingMode(const Loop *L,
                                          ScalarEvolution *SE) const {
