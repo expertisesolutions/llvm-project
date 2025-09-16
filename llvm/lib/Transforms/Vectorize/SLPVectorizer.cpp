@@ -6323,11 +6323,17 @@ static bool isReverseOrder(ArrayRef<unsigned> Order) {
 }
 
 /// Checks if the provided list of pointers \p Pointers represents the strided
-/// pointers for type ElemTy. If they are not, nullptr is returned.
-/// Otherwise, SCEV* of the stride value is returned.
-static const SCEV *calculateRtStride(ArrayRef<Value *> PointerOps, Type *ElemTy,
-                                     const DataLayout &DL, ScalarEvolution &SE,
-                                     SmallVectorImpl<unsigned> &SortedIndices) {
+/// pointers for type ElemTy. If they are not, std::nullopt is returned.
+/// Otherwise, if \p Inst is not specified, just initialized optional value is
+/// returned to show that the pointers represent strided pointers. If \p Inst
+/// specified, the runtime stride is materialized before the given \p Inst.
+/// \returns std::nullopt if the pointers are not pointers with the runtime
+/// stride, nullptr or actual stride value, otherwise.
+static std::optional<Value *>
+calculateRtStride(ArrayRef<Value *> PointerOps, Type *ElemTy,
+                  const DataLayout &DL, ScalarEvolution &SE,
+                  SmallVectorImpl<unsigned> &SortedIndices,
+                  Instruction *Inst = nullptr) {
   SmallVector<const SCEV *> SCEVs;
   const SCEV *PtrSCEVLowest = nullptr;
   const SCEV *PtrSCEVHighest = nullptr;
@@ -6336,7 +6342,7 @@ static const SCEV *calculateRtStride(ArrayRef<Value *> PointerOps, Type *ElemTy,
   for (Value *Ptr : PointerOps) {
     const SCEV *PtrSCEV = SE.getSCEV(Ptr);
     if (!PtrSCEV)
-      return nullptr;
+      return std::nullopt;
     SCEVs.push_back(PtrSCEV);
     if (!PtrSCEVLowest && !PtrSCEVHighest) {
       PtrSCEVLowest = PtrSCEVHighest = PtrSCEV;
@@ -6344,14 +6350,14 @@ static const SCEV *calculateRtStride(ArrayRef<Value *> PointerOps, Type *ElemTy,
     }
     const SCEV *Diff = SE.getMinusSCEV(PtrSCEV, PtrSCEVLowest);
     if (isa<SCEVCouldNotCompute>(Diff))
-      return nullptr;
+      return std::nullopt;
     if (Diff->isNonConstantNegative()) {
       PtrSCEVLowest = PtrSCEV;
       continue;
     }
     const SCEV *Diff1 = SE.getMinusSCEV(PtrSCEVHighest, PtrSCEV);
     if (isa<SCEVCouldNotCompute>(Diff1))
-      return nullptr;
+      return std::nullopt;
     if (Diff1->isNonConstantNegative()) {
       PtrSCEVHighest = PtrSCEV;
       continue;
@@ -6360,7 +6366,7 @@ static const SCEV *calculateRtStride(ArrayRef<Value *> PointerOps, Type *ElemTy,
   // Dist = PtrSCEVHighest - PtrSCEVLowest;
   const SCEV *Dist = SE.getMinusSCEV(PtrSCEVHighest, PtrSCEVLowest);
   if (isa<SCEVCouldNotCompute>(Dist))
-    return nullptr;
+    return std::nullopt;
   int Size = DL.getTypeStoreSize(ElemTy);
   auto TryGetStride = [&](const SCEV *Dist,
                           const SCEV *Multiplier) -> const SCEV * {
@@ -6381,10 +6387,10 @@ static const SCEV *calculateRtStride(ArrayRef<Value *> PointerOps, Type *ElemTy,
     const SCEV *Sz = SE.getConstant(Dist->getType(), Size * (SCEVs.size() - 1));
     Stride = TryGetStride(Dist, Sz);
     if (!Stride)
-      return nullptr;
+      return std::nullopt;
   }
   if (!Stride || isa<SCEVConstant>(Stride))
-    return nullptr;
+    return std::nullopt;
   // Iterate through all pointers and check if all distances are
   // unique multiple of Stride.
   using DistOrdPair = std::pair<int64_t, int>;
@@ -6398,28 +6404,28 @@ static const SCEV *calculateRtStride(ArrayRef<Value *> PointerOps, Type *ElemTy,
       const SCEV *Diff = SE.getMinusSCEV(PtrSCEV, PtrSCEVLowest);
       const SCEV *Coeff = TryGetStride(Diff, Stride);
       if (!Coeff)
-        return nullptr;
+        return std::nullopt;
       const auto *SC = dyn_cast<SCEVConstant>(Coeff);
       if (!SC || isa<SCEVCouldNotCompute>(SC))
-        return nullptr;
+        return std::nullopt;
       if (!SE.getMinusSCEV(PtrSCEV, SE.getAddExpr(PtrSCEVLowest,
                                                   SE.getMulExpr(Stride, SC)))
                ->isZero())
-        return nullptr;
+        return std::nullopt;
       Dist = SC->getAPInt().getZExtValue();
     }
     // If the strides are not the same or repeated, we can't vectorize.
     if ((Dist / Size) * Size != Dist || (Dist / Size) >= SCEVs.size())
-      return nullptr;
+      return std::nullopt;
     auto Res = Offsets.emplace(Dist, Cnt);
     if (!Res.second)
-      return nullptr;
+      return std::nullopt;
     // Consecutive order if the inserted element is the last one.
     IsConsecutive = IsConsecutive && std::next(Res.first) == Offsets.end();
     ++Cnt;
   }
   if (Offsets.size() != SCEVs.size())
-    return nullptr;
+    return std::nullopt;
   SortedIndices.clear();
   if (!IsConsecutive) {
     // Fill SortedIndices array only if it is non-consecutive.
@@ -6430,7 +6436,10 @@ static const SCEV *calculateRtStride(ArrayRef<Value *> PointerOps, Type *ElemTy,
       ++Cnt;
     }
   }
-  return Stride;
+  if (!Inst)
+    return nullptr;
+  SCEVExpander Expander(SE, DL, "strided-load-vec");
+  return Expander.expandCodeFor(Stride, Stride->getType(), Inst);
 }
 
 static std::pair<InstructionCost, InstructionCost>
@@ -19511,14 +19520,11 @@ Value *BoUpSLP::vectorizeTree(TreeEntry *E) {
             return cast<LoadInst>(V)->getPointerOperand();
           });
           OrdersType Order;
-          const SCEV *StrideSCEV =
-              calculateRtStride(PointerOps, ScalarTy, *DL, *SE, Order);
-          assert(StrideSCEV && "At this point stride should be known");
-          SCEVExpander Expander(*SE, *DL, "strided-load-vec");
-          Value *Stride = Expander.expandCodeFor(
-              StrideSCEV, StrideSCEV->getType(), &*Builder.GetInsertPoint());
+          std::optional<Value *> Stride =
+              calculateRtStride(PointerOps, ScalarTy, *DL, *SE, Order,
+                                &*Builder.GetInsertPoint());
           Value *NewStride =
-              Builder.CreateIntCast(Stride, StrideTy, /*isSigned=*/true);
+              Builder.CreateIntCast(*Stride, StrideTy, /*isSigned=*/true);
           StrideVal = Builder.CreateMul(
               NewStride,
               ConstantInt::get(
