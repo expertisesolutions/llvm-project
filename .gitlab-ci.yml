@@ -19,11 +19,6 @@ build-test-benchmark:
     - whoami
     - pwd
 
-    # check that we can execute riscv64 with the plugin
-    - cp $TEST_RISCV64 .
-    - (export USE_QEMU_PLUGIN="1"; export QEMU_CPU="veyron-v2"; ./test-riscv64.elf)
-    - ls
-
     - export BRANCH_NAME=$CI_COMMIT_SHORT_SHA
     # check that needed volumes are mounter correctly
     - export CCACHE_DIR=/mnt/ccache/llvm
@@ -50,6 +45,8 @@ build-test-benchmark:
 
     - cp -r /mnt/spec2017 $STAGING_DIR/
     - export SPEC_DIR=$STAGING_DIR/spec2017
+    - export RUN_SCRIPTS_DIR=$SPEC_DIR/run_scripts
+    - mkdir $RUN_SCRIPTS_DIR
 
     - export BUILD_DIR=$STAGING_DIR/build
     - export INSTALL_DIR=$STAGING_DIR/install
@@ -62,12 +59,10 @@ build-test-benchmark:
     # run benchmarks with test workload
     - make clean_spec
     - make run_spec_test
-    - make check_spec_logs
 
     # run benchmarks with train workload
     - make clean_spec
     - make run_spec_train
-    - make check_spec_logs
 
     # MKDIR_CP is defined by the docker container
     - $MKDIR_CP  -listOfPaths $(ls $SPEC_DIR/cpu2017/benchspec/CPU/*/build/*/*.out) -pathPrefix $STAGING_DIR
