@@ -78,82 +78,62 @@ SPEC_LD_FLAGS="\
 "
 # SPEC_DIR is defined in gitlab-ci.yml
 # RUN_SCRIPTS_DIR was defined in gitlab-ci.yml
-#
-define run_spec_benchmark
-	cd $(SPEC_DIR)/cpu2017; \
-	(\
-	source shrc; \
-	runcpu \
-	--config=llvm-linux-riscv-ventana.cfg \
-	--define label=$(BRANCH_NAME) \
-	--define llvm_bin_dir="$(INSTALL_DIR)/bin" \
-	--define optimize_flags=$(SPEC_OPTIMIZE_FLAGS) \
-	--define ld_flags=$(SPEC_LD_FLAGS) \
-	--action=build \
-	--size=$(2) \
-	$(1); \
-	runcpu \
-	--config=llvm-linux-riscv-ventana.cfg \
-	--define label=$(BRANCH_NAME) \
-	--define llvm_bin_dir="$(INSTALL_DIR)/bin" \
-	--define optimize_flags=$(SPEC_OPTIMIZE_FLAGS) \
-	--define ld_flags=$(SPEC_LD_FLAGS) \
-	--action=validate \
-	--size=$(2) \
-	--fake \
-	$(1) \
-	> $(RUN_SCRIPTS_DIR)/fake_output_$(1).txt; \
-	python3 $(SPEC_DIR)/spec.py \
-	--spec_cpu2017_path=$(SPEC_DIR)/cpu2017 \
-	--generate_script \
-	--run_script \
-	--use_libcollect \
-	--scripts_dir_path=$(RUN_SCRIPTS_DIR) \
-	--exe_dir_path=$(SPEC_DIR)/cpu2017/benchspec/CPU/$(1)/exe/ \
-	--run_dir_path=$(SPEC_DIR)/cpu2017/benchspec/CPU/$(1)/run/run_base_$(2)_$(BRANCH_NAME).0000 \
-	--fake_run_log=$(RUN_SCRIPTS_DIR)/fake_output_$(1).txt \
-	--output_path=$(RUN_SCRIPTS_DIR)/script_$(1).sh \
-	--run_under_prefix="$(QEMU) -cpu $(MCPU) -execv-prefix $(QEMU)" \
-	) > $(RUN_SCRIPTS_DIR)/$(1).log
-endef
-
 run_spec_test:
-	$(call run_spec_benchmark,500.perlbench_r,test) & \
-	$(call run_spec_benchmark,502.gcc_r,test) & \
-	$(call run_spec_benchmark,505.mcf_r,test) & \
-	$(call run_spec_benchmark,508.namd_r,test) & \
-	$(call run_spec_benchmark,510.parest_r,test) & \
-	$(call run_spec_benchmark,511.povray_r,test) & \
-	$(call run_spec_benchmark,519.lbm_r,test) & \
-	$(call run_spec_benchmark,520.omnetpp_r,test) & \
-	$(call run_spec_benchmark,523.xalancbmk_r,test) & \
-	$(call run_spec_benchmark,525.x264_r,test) & \
-	$(call run_spec_benchmark,526.blender_r,test) & \
-	$(call run_spec_benchmark,531.deepsjeng_r,test) & \
-	$(call run_spec_benchmark,538.imagick_r,test) & \
-	$(call run_spec_benchmark,541.leela_r,test) & \
-	$(call run_spec_benchmark,544.nab_r,test) & \
-	$(call run_spec_benchmark,557.xz_r,test) & \
-	wait
+	export BRANCH_NAME=$(BRANCH_NAME); \
+	export INSTALL_DIR=$(INSTALL_DIR); \
+	export RUN_SCRIPTS_DIR=$(RUN_SCRIPTS_DIR); \
+	export SPEC_DIR=$(SPEC_DIR); \
+	export QEMU=$(QEMU); \
+	export MCPU=$(MCPU); \
+	export SPEC_OPTIMIZE_FLAGS=$(SPEC_OPTIMIZE_FLAGS); \
+	export SPEC_LD_FLAGS=$(SPEC_LD_FLAGS); \
+	parallel "$(RUN_SPEC_BENCHMARK)" ::: \
+	500.perlbench_r \
+	502.gcc_r \
+	505.mcf_r \
+	508.namd_r \
+	510.parest_r \
+	511.povray_r \
+	519.lbm_r \
+	520.omnetpp_r \
+	523.xalancbmk_r \
+	525.x264_r \
+	526.blender_r \
+	531.deepsjeng_r \
+	538.imagick_r \
+	541.leela_r \
+	544.nab_r \
+	557.xz_r \
+	::: test
 
 run_spec_train:
-	$(call run_spec_benchmark,500.perlbench_r,train) & \
-	$(call run_spec_benchmark,502.gcc_r,train) & \
-	$(call run_spec_benchmark,505.mcf_r,train) & \
-	$(call run_spec_benchmark,508.namd_r,train) & \
-	$(call run_spec_benchmark,510.parest_r,train) & \
-	$(call run_spec_benchmark,511.povray_r,train) & \
-	$(call run_spec_benchmark,519.lbm_r,train) & \
-	$(call run_spec_benchmark,520.omnetpp_r,train) & \
-	$(call run_spec_benchmark,523.xalancbmk_r,train) & \
-	$(call run_spec_benchmark,525.x264_r,train) & \
-	$(call run_spec_benchmark,526.blender_r,train) & \
-	$(call run_spec_benchmark,531.deepsjeng_r,train) & \
-	$(call run_spec_benchmark,538.imagick_r,train) & \
-	$(call run_spec_benchmark,541.leela_r,train) & \
-	$(call run_spec_benchmark,544.nab_r,train) & \
-	$(call run_spec_benchmark,557.xz_r,train) & \
-	wait
+	export BRANCH_NAME=$(BRANCH_NAME); \
+	export INSTALL_DIR=$(INSTALL_DIR); \
+	export RUN_SCRIPTS_DIR=$(RUN_SCRIPTS_DIR); \
+	export SPEC_DIR=$(SPEC_DIR); \
+	export QEMU=$(QEMU); \
+	export MCPU=$(MCPU); \
+	export SPEC_OPTIMIZE_FLAGS=$(SPEC_OPTIMIZE_FLAGS); \
+	export SPEC_LD_FLAGS=$(SPEC_LD_FLAGS); \
+	parallel "$(RUN_SPEC_BENCHMARK)" ::: \
+	500.perlbench_r \
+	502.gcc_r \
+	505.mcf_r \
+	508.namd_r \
+	510.parest_r \
+	511.povray_r \
+	519.lbm_r \
+	520.omnetpp_r \
+	523.xalancbmk_r \
+	525.x264_r \
+	526.blender_r \
+	531.deepsjeng_r \
+	538.imagick_r \
+	541.leela_r \
+	544.nab_r \
+	557.xz_r \
+	::: train
+
 clean_spec:
 	rm -rf $(SPEC_DIR)/cpu2017/benchspec/C*/*/run
 	rm -rf $(SPEC_DIR)/cpu2017/benchspec/C*/*/build

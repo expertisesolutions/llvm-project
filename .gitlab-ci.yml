@@ -45,6 +45,7 @@ build-test-benchmark:
 
     - cp -r /mnt/spec2017 $STAGING_DIR/
     - export SPEC_DIR=$STAGING_DIR/spec2017
+    - export RUN_SPEC_BENCHMARK=$SPEC_DIR/run_spec_benchmark.sh
     - export RUN_SCRIPTS_DIR=$SPEC_DIR/run_scripts
     - mkdir $RUN_SCRIPTS_DIR
 
