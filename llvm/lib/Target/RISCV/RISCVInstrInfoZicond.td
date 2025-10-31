@@ -50,3 +50,8 @@ def : Pat<(XLenVT (riscv_czero_nez GPR:$rs1, (riscv_setne (XLenVT GPR:$rc)))),
 def : Pat<(XLenVT (riscv_czero_nez GPR:$rs1, (riscv_seteq (XLenVT GPR:$rc)))),
           (CZERO_EQZ GPR:$rs1, GPR:$rc)>;
 } // Predicates = [HasStdExtZicond]
+
+let Predicates = [HasStdExtZicond] in {
+def : Pat<(riscv_brcc (XLenVT (sext_inreg (XLenVT (or (riscv_czero_nez GPR:$rs1,  GPR:$rs2), (riscv_czero_eqz GPR:$rs3, GPR:$rs2))), i32)), GPR:$rs3, SETEQ, bb:$place),
+          (BLT GPR:$rs1, (XLenVT X0), bb:$place)>;
+} // Predicates = [HasStdExtZicond]
