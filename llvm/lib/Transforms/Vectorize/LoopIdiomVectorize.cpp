@@ -480,35 +480,14 @@ bool LoopIdiomVectorize::recognizeCheckEquality() {
 
   auto *IncGEP = dyn_cast<GetElementPtrInst>(IncPtr);
   auto *EndGEP = dyn_cast<GetElementPtrInst>(EndPtr);
-  Value *Length;
+  Value *Length = nullptr;
   if (EndGEP)
-    Length = EndGEP->getOperand(1);;
+    Length = EndGEP->getOperand(1);
   ConstantInt *Step = nullptr;
-  // Check if we have a idiom without the length.
-  if (llvm::isa<llvm::ConstantInt>(EndPtr) && llvm::isa<llvm::PHINode>(IncPtr)) {
-    llvm::ConstantInt* CI = llvm::dyn_cast<llvm::ConstantInt>(EndPtr);
-    llvm::APInt apInt = CI->getValue();
-    if (!IncGEP && !EndGEP && !apInt.ugt(0)) {
-      auto *IncPhi = dyn_cast<PHINode>(IncPtr);
-      Length = 0;
-      if (IncPhi) {
-	LoadInst *LoadInc = dyn_cast<LoadInst>(IncPhi->getIncomingValue(0));
-	if (LoadInc) {
-	  IncGEP = dyn_cast<GetElementPtrInst>(LoadInc->getPointerOperand());
-	  IncPhi = dyn_cast<PHINode>(IncGEP->getOperand(0));
-          if (!IncGEP ||
-              !IncGEP->getSourceElementType()->isIntegerTy(8) ||
-              IncGEP->getNumIndices() > 1 ||
-              !match(IncGEP->getOperand(1), m_ConstantInt(Step)))
-	    return false;
-        }
-      }
-    }
-  } else if (!IncGEP || !EndGEP ||
-             !IncGEP->getSourceElementType()->isIntegerTy(8) ||
-             IncGEP->getNumIndices() > 1 ||
-             !match(IncGEP->getOperand(1), m_ConstantInt(Step)) ||
-             EndGEP->getNumIndices() > 1)
+  if (!IncGEP || !IncGEP->getSourceElementType()->isIntegerTy(8) ||
+      IncGEP->getNumIndices() > 1 ||
+      !match(IncGEP->getOperand(1), m_ConstantInt(Step)) ||
+      (Length && (!EndGEP || EndGEP->getNumIndices() > 1)))
     return false;
 
   // while cond
