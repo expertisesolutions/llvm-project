@@ -1627,9 +1627,8 @@ void LoopIdiomVectorize::transformCheckEquality(Value *PtrA, Value *PtrB,
 }
 
 void LoopIdiomVectorize::transformCheckEquality(Value *PtrA, Value *PtrB,
-                                               PHINode *ResPhi,
-                                               Value *Step, Type *ElTy,
-                                               BasicBlock *EndBB) {
+                                                PHINode *ResPhi, Value *Step,
+                                                Type *ElTy, BasicBlock *EndBB) {
   BasicBlock *Preheader = CurLoop->getLoopPreheader();
   BasicBlock *Header = CurLoop->getHeader();
   BranchInst *HeaderBr = cast<BranchInst>(Header->getTerminator());
@@ -1645,18 +1644,14 @@ void LoopIdiomVectorize::transformCheckEquality(Value *PtrA, Value *PtrB,
   auto *IndexPHI = Builder.CreatePHI(I64Type, 2, "index");
   IndexPHI->addIncoming(ConstantInt::get(I64Type, 0), Preheader);
 
-  Value *LhsGep =
-      Builder.CreateGEP(ElTy, PtrA, IndexPHI);
+  Value *LhsGep = Builder.CreateGEP(ElTy, PtrA, IndexPHI);
   Value *LhsLoad = Builder.CreateLoad(ElTy, LhsGep);
   Value *AZero = Builder.CreateICmpEQ(LhsLoad, ConstantInt::get(ElTy, 0));
-  Value *RhsGep =
-      Builder.CreateGEP(ElTy, PtrB, IndexPHI);
+  Value *RhsGep = Builder.CreateGEP(ElTy, PtrB, IndexPHI);
   Value *RhsLoad = Builder.CreateLoad(ElTy, RhsGep);
   Value *BZero = Builder.CreateICmpEQ(RhsLoad, ConstantInt::get(ElTy, 0));
   Value *NZero = Builder.CreateAnd(AZero, BZero, "");
-  Value *NotZero = Builder.CreateICmpEQ(NZero, ConstantInt::get(NZero->getType(), 1));
-  BranchInst *VectorEarlyExit = BranchInst::Create(EndBB,
-                                             Latch, NotZero);
+  BranchInst *VectorEarlyExit = BranchInst::Create(EndBB, Latch, NZero);
 
   Builder.SetInsertPoint(HeaderBr);
 
@@ -1670,74 +1665,61 @@ void LoopIdiomVectorize::transformCheckEquality(Value *PtrA, Value *PtrB,
       VectorType::get(Builder.getInt1Ty(), VectorLoadType->getElementCount());
   Value *AllTrueMask = Constant::getAllOnesValue(TrueMaskTy);
 
-  Value *VectorLhsGep =
-      Builder.CreateGEP(ElTy, PtrA, IndexPHI);
-  Value *VectorLhsLoad = Builder.CreateIntrinsic(
-      Intrinsic::vp_load, {VectorLoadType, VectorLhsGep->getType()},
+  Value *VectorLhsGep = Builder.CreateGEP(ElTy, PtrA, IndexPHI);
+  Value *VectorLhsLoadFF = Builder.CreateIntrinsic(
+      Intrinsic::vp_load_ff, {VectorLoadType, VectorLhsGep->getType()},
       {VectorLhsGep, AllTrueMask, VL});
+  Value *VectorLhsLoad = Builder.CreateExtractValue(VectorLhsLoadFF, 0);
+  Value *VectorLhsFault = Builder.CreateExtractValue(VectorLhsLoadFF, 1);
 
-  Value *VectorRhsGep =
-      Builder.CreateGEP(ElTy, PtrB, IndexPHI);
-  Value *VectorRhsLoad = Builder.CreateIntrinsic(
-      Intrinsic::vp_load, {VectorLoadType, VectorRhsGep->getType()},
+  Value *VectorRhsGep = Builder.CreateGEP(ElTy, PtrB, IndexPHI);
+  Value *VectorRhsLoadFF = Builder.CreateIntrinsic(
+      Intrinsic::vp_load_ff, {VectorLoadType, VectorRhsGep->getType()},
       {VectorRhsGep, AllTrueMask, VL});
+  Value *VectorRhsLoad = Builder.CreateExtractValue(VectorRhsLoadFF, 0);
+  Value *VectorRhsFault = Builder.CreateExtractValue(VectorRhsLoadFF, 1);
+
+  // Use minimum fault position from both vectors as effective VL for comparison
+  Value *MinFault = Builder.CreateSelect(
+      Builder.CreateICmpULT(VectorLhsFault, VectorRhsFault), VectorLhsFault,
+      VectorRhsFault);
+  Value *EffectiveVL = Builder.CreateSelect(
+      Builder.CreateICmpNE(MinFault, ConstantInt::get(MinFault->getType(), 0)),
+      MinFault, VL);
 
   StringRef PredicateStr = CmpInst::getPredicateName(CmpInst::ICMP_NE);
   auto *PredicateMDS = MDString::get(VectorLhsLoad->getContext(), PredicateStr);
   Value *Pred = MetadataAsValue::get(VectorLhsLoad->getContext(), PredicateMDS);
   Value *VectorCmp = Builder.CreateIntrinsic(
       Intrinsic::vp_icmp, {VectorLhsLoad->getType()},
-      {VectorLhsLoad, VectorRhsLoad, Pred, AllTrueMask, VL});
+      {VectorLhsLoad, VectorRhsLoad, Pred, AllTrueMask, EffectiveVL});
   Value *ZeroVec = Constant::getNullValue(VectorLhsLoad->getType());
   PredicateStr = CmpInst::getPredicateName(CmpInst::ICMP_EQ);
   PredicateMDS = MDString::get(VectorLhsLoad->getContext(), PredicateStr);
   Pred = MetadataAsValue::get(VectorLhsLoad->getContext(), PredicateMDS);
   Value *VectorCmp2 = Builder.CreateIntrinsic(
       Intrinsic::vp_icmp, {VectorLhsLoad->getType()},
-      {VectorLhsLoad, ZeroVec, Pred, AllTrueMask, VL});
-  Value *OR  = Builder.CreateIntrinsic(
+      {VectorLhsLoad, ZeroVec, Pred, AllTrueMask, EffectiveVL});
+  Value *OR = Builder.CreateIntrinsic(
       Intrinsic::vp_or, {VectorCmp->getType()},
-      {VectorCmp, VectorCmp2, AllTrueMask,
-       VL});
+      {VectorCmp, VectorCmp2, AllTrueMask, EffectiveVL});
   Value *CTZ = Builder.CreateIntrinsic(
       Intrinsic::vp_cttz_elts, {I32Type, VectorCmp->getType()},
-      {OR, /*ZeroIsPoison=*/Builder.getInt1(false), AllTrueMask,
-       VL});
+      {OR, /*ZeroIsPoison=*/Builder.getInt1(false), AllTrueMask, EffectiveVL});
   Builder.Insert(VectorEarlyExit);
   HeaderBr->eraseFromParent();
 
   // increment index
   Builder.SetInsertPoint(LatchBr);
-  Value *VL64 = Builder.CreateZExt(VL, I64Type);
+  Value *VL64 = Builder.CreateZExt(EffectiveVL, I64Type);
   Value *NewIndex = Builder.CreateAdd(IndexPHI, VL64, "",
                                       /*HasNUW=*/true, /*HasNSW=*/true);
   IndexPHI->addIncoming(NewIndex, Latch);
 
-  Value *EndCmp = Builder.CreateICmpEQ(CTZ, VL);
-  auto *BranchBack = BranchInst::Create(Header, EndBB, EndCmp);
+  Value *HasMismatchOrNull = Builder.CreateICmpNE(CTZ, EffectiveVL);
 
-  // tail
-  auto *NewIndexPHI = Builder.CreatePHI(I64Type, 1, "index");
-  NewIndexPHI->addIncoming(IndexPHI, Header);
-  Value *VecStep = Builder.CreateLShr(Step, Builder.getInt32(1), "");
-  NewIndex = Builder.CreateAdd(NewIndexPHI, VecStep, "",
-                                      /*HasNUW=*/true, /*HasNSW=*/true);
-  LhsGep = Builder.CreateGEP(ElTy, PtrA, NewIndex);
-  LhsLoad = Builder.CreateLoad(ElTy, LhsGep);
-  RhsGep = Builder.CreateGEP(ElTy, PtrB, NewIndex);
-  RhsLoad = Builder.CreateLoad(ElTy, RhsGep);
-  Value *EqLoad = Builder.CreateSub(LhsLoad, RhsLoad, "res");
-  Value *IsZero = Builder.CreateICmpEQ(EqLoad, ConstantInt::get(ElTy, 0));
-  NewIndex = NewIndexPHI;
-  LhsGep =
-      Builder.CreateGEP(ElTy, PtrA, NewIndex);
-  LhsLoad = Builder.CreateLoad(ElTy, LhsGep);
-  RhsGep =
-      Builder.CreateGEP(ElTy, PtrB, NewIndex);
-  RhsLoad = Builder.CreateLoad(ElTy, RhsGep);
-  EqLoad = Builder.CreateSub(LhsLoad, RhsLoad, "");
-  Value *IsEqual = Builder.CreateICmpEQ(EqLoad, ConstantInt::get(ElTy, 0));
-  NotZero = Builder.CreateAnd(IsZero, IsEqual, "");
+  Value *EndCmp = Builder.CreateICmpEQ(CTZ, EffectiveVL);
+  auto *BranchBack = BranchInst::Create(Header, EndBB, EndCmp);
   Builder.Insert(BranchBack);
   LatchBr->eraseFromParent();
 
@@ -1745,7 +1727,7 @@ void LoopIdiomVectorize::transformCheckEquality(Value *PtrA, Value *PtrB,
   Builder.SetInsertPoint(ResPhi);
   auto *NewResPH = Builder.CreatePHI(ResType, 2, "index");
   NewResPH->addIncoming(Builder.getInt1(true), Header);
-  NewResPH->addIncoming(NotZero, Latch);
+  NewResPH->addIncoming(HasMismatchOrNull, Latch);
 
   ResPhi->replaceAllUsesWith(NewResPH);
   ResPhi->eraseFromParent();
