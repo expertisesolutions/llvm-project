@@ -9410,9 +9410,27 @@ SDValue RISCVTargetLowering::lowerSELECT(SDValue Op, SelectionDAG &DAG) const {
       }
     }
 
+    // This do not create the czeros, but causes branches to be created
+    // We need to find a good return here, i.e., identify which pieces of
+    // assembly we should get and mount a correct DAG to avoid the multiple branches
+    // instead of skipping the return of the czeros.
+    // Also, probably we should contrain a bit more. It feels risky the way it is, as
+    // we could be optimizing out ziconds that we cannot.
+    bool SkipCZero = false;
+    if (CondV.getOpcode() == ISD::SETCC &&
+        FalseV.getOpcode() == RISCVISD::VFIRST_VL) {
+      SDValue X = CondV.getOperand(0);
+      if (isNullConstant(CondV.getOperand(1)) && X == FalseV) {
+        ISD::CondCode CC = cast<CondCodeSDNode>(CondV.getOperand(2))->get();
+        if (CC == ISD::SETLT) {
+          SkipCZero=true;
+        }
+      }
+    }
+
     // (select c, t, f) -> (or (czero_eqz t, c), (czero_nez f, c))
     // Unless we have the short forward branch optimization.
-    if (!Subtarget.hasConditionalMoveFusion())
+    if (!Subtarget.hasConditionalMoveFusion() && !SkipCZero)
       return DAG.getNode(
           ISD::OR, DL, VT,
           DAG.getNode(RISCVISD::CZERO_EQZ, DL, VT, TrueV, CondV),
@@ -9449,7 +9467,7 @@ SDValue RISCVTargetLowering::lowerSELECT(SDValue Op, SelectionDAG &DAG) const {
     if (FPTV->isExactlyValue(0.0) && FPFV->isExactlyValue(1.0)) {
       SDValue XOR = DAG.getNode(ISD::XOR, DL, XLenVT, CondV,
                                 DAG.getConstant(1, DL, XLenVT));
-      return DAG.getNode(ISD::SINT_TO_FP, DL, VT, XOR);
+        return DAG.getNode(ISD::SINT_TO_FP, DL, VT, XOR);
     }
   }
 
@@ -9490,7 +9508,10 @@ SDValue RISCVTargetLowering::lowerSELECT(SDValue Op, SelectionDAG &DAG) const {
     if (TrueVal - 1 == FalseVal)
       return DAG.getNode(ISD::ADD, DL, VT, CondV, FalseV);
     if (TrueVal + 1 == FalseVal)
+    {
+      LLVM_DEBUG(dbgs() << "8th return: \n");
       return DAG.getNode(ISD::SUB, DL, VT, FalseV, CondV);
+    }
   }
 
   translateSetCCForBranch(DL, LHS, RHS, CCVal, DAG, Subtarget);
@@ -9521,6 +9542,7 @@ SDValue RISCVTargetLowering::lowerSELECT(SDValue Op, SelectionDAG &DAG) const {
   }
 
   SDValue Ops[] = {LHS, RHS, TargetCC, TrueV, FalseV};
+  LLVM_DEBUG(dbgs() << "9th return: \n");
   return DAG.getNode(RISCVISD::SELECT_CC, DL, VT, Ops);
 }
 
