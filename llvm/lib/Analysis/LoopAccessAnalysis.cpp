@@ -2104,19 +2104,6 @@ MemoryDepChecker::getDependenceDistanceStrideAndSize(
   LLVM_DEBUG(dbgs() << "LAA:  Src induction step: " << StrideAPtrInt
                     << " Sink induction step: " << StrideBPtrInt << "\n");
 
-  if (!StrideAPtrInt && !StrideBPtrInt && !(AIsWrite && BIsWrite) &&
-      (AIsWrite || BIsWrite) && !isa<UndefValue>(APtr) &&
-      InnermostLoop->isLoopInvariant(APtr) &&
-      InnermostLoop->isLoopInvariant(BPtr)) {
-    LoadInst *L = dyn_cast<LoadInst>(AIsWrite ? BInst : AInst);
-    StoreInst *S = dyn_cast<StoreInst>(AIsWrite ? AInst : BInst);
-    if (L && S && InnermostLoop->isLoopInvariant(L->getPointerOperand()))
-      if (AA->alias(MemoryLocation::get(L), MemoryLocation::get(S)) ==
-          AliasResult::MustAlias)
-        ShouldRetryWithRuntimeChecks = true;
-
-    return MemoryDepChecker::Dependence::Unknown;
-  }
 
   // At least Src or Sink are loop invariant and the other is strided or
   // invariant. We can generate a runtime check to disambiguate the accesses.

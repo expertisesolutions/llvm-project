@@ -1248,6 +1248,18 @@ bool LoopVectorizationLegality::canVectorizeMemory() {
     });
   }
 
+  bool AllConflictsHoistable = true;
+  if (LAI->hasLoadStoreDependenceInvolvingLoopInvariantAddress()) {
+    auto *SE = PSE.getSE();
+    for (const auto &[Load, Store] : LAI->getInvariantAddressConflicts()) {
+      if (!isInvariantLoadHoistable(Load, Store, TheLoop, MSSA, AA, *SE)) {
+        AllConflictsHoistable = false;
+        break;
+      }
+    }
+  }
+
+  auto HasLSDep = LAI->hasLoadStoreDependenceInvolvingLoopInvariantAddress();
   if (!LAI->canVectorizeMemory()) {
     if (hasUncountableExitWithSideEffects()) {
       reportVectorizationFailure(
@@ -1258,21 +1270,44 @@ bool LoopVectorizationLegality::canVectorizeMemory() {
       return false;
     }
 
-    return canVectorizeIndirectUnsafeDependences();
+    auto CanVecUnsafe = canVectorizeIndirectUnsafeDependences();
+    if (HasLSDep && AllConflictsHoistable) {
+      SmallPtrSet<Instruction *, 8> HoistableConflicts;
+      for (const auto &[Load, Store] : LAI->getInvariantAddressConflicts()) {
+        HoistableConflicts.insert(Load);
+        HoistableConflicts.insert(Store);
+      }
+
+      const auto *Deps = LAI->getDepChecker().getDependences();
+      bool HasOtherUnsafeDeps = false;
+      if (Deps) {
+        // Check if we have any dependency that is unsafe that we didn't
+        // classify as hoistable beforehand at LAI.
+        for (const auto &Dep : *Deps) {
+          if (MemoryDepChecker::Dependence::isSafeForVectorization(Dep.Type) !=
+              MemoryDepChecker::VectorizationSafetyStatus::Safe) {
+            Instruction *Src = Dep.getSource(LAI->getDepChecker());
+            Instruction *Dst = Dep.getDestination(LAI->getDepChecker());
+            if (!HoistableConflicts.contains(Src) || !HoistableConflicts.contains(Dst)) {
+              HasOtherUnsafeDeps = true;
+              break;
+            }
+          }
+        }
+      }
+      if (HasOtherUnsafeDeps && !CanVecUnsafe)
+        return false;
+    } else if (!CanVecUnsafe)
+      return false;
   }
 
-  if (LAI->hasLoadStoreDependenceInvolvingLoopInvariantAddress()) {
-    auto *SE = PSE.getSE();
-    for (const auto &[Load, Store] : LAI->getInvariantAddressConflicts()) {
-      if (!isInvariantLoadHoistable(Load, Store, TheLoop, MSSA, AA, *SE)) {
-        reportVectorizationFailure(
-            "We don't allow storing to uniform addresses",
-            "write to a loop invariant address could not "
-            "be vectorized",
-            "CantVectorizeStoreToLoopInvariantAddress", ORE, TheLoop);
-        return false;
-      }
-    }
+  if (HasLSDep && !AllConflictsHoistable) {
+    reportVectorizationFailure("We don't allow storing to uniform addresses",
+                               "write to a loop invariant address could not "
+                               "be vectorized",
+                               "CantVectorizeStoreToLoopInvariantAddress", ORE,
+                               TheLoop);
+    return false;
   }
 
   // We can vectorize stores to invariant address when final reduction value is

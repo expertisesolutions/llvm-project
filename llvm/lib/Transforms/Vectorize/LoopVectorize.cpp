@@ -10532,6 +10532,9 @@ bool isInvariantLoadHoistable(LoadInst *L, StoreInst *S, const Loop *Loop,
   if (L->isVolatile() || S->isVolatile())
     return false;
 
+  if (L->getType() != S->getValueOperand()->getType())
+    return false;
+
   MemoryAccess *MA = MSSA->getMemoryAccess(L);
   auto QLoc = MemoryLocation::get(L);
 
